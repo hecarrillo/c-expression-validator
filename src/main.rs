@@ -1,124 +1,179 @@
-use std::collections::HashMap;
+use std::collections::VecDeque;
+mod char_validations;
 
-struct StackAutomaton {
-    stack: Vec<State>,
-    transition_table: HashMap<(State, Token), State>,
-}
-
-#[derive(Hash)]
+#[derive(Debug, PartialEq)]
 enum State {
-    Initial,
-    StartParenthesis,
-    AfterIdentifier,
-    AfterOperator,
-    AfterDigit,
-    // other states
-    Final,
-    Invalid,
+    Start,              // q0
+    Variable,           // q1
+    AfterAssignation,   // q2
+    VariableExpression, // q3
+    Operator,           // q4
+    DigitExpression,    // q5
+    Final,              // q6
+    Reject,             // q7
 }
 
-impl PartialEq for State {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (State::Initial, State::Initial) => true,
-            (State::StartParenthesis, State::StartParenthesis) => true,
-            (State::AfterIdentifier, State::AfterIdentifier) => true,
-            (State::AfterOperator, State::AfterOperator) => true,
-            (State::AfterDigit, State::AfterDigit) => true,
-            (State::Final, State::Final) => true,
-            (State::Invalid, State::Invalid) => true,
-            _ => false,
+// state machine that contains the current state and the stack
+#[derive(Debug)]
+struct StateMachine {
+    state: State,
+    stack: VecDeque<char>,
+}
+
+// State machine transitions
+
+// Transition from q0 to q1 if the character is a valid variable identifier. Dont push to stack. Receive a state machine and edit it
+fn start(c: char, mut state_machine: StateMachine) -> StateMachine {
+    if char_validations::is_variable_identifier(c) {
+        state_machine.state = State::Variable;
+    } else {
+        state_machine.state = State::Reject;
+    }
+    state_machine
+}
+
+// Transition from q1 to q2 if the character is an equal sign. Stay in q1 if the character is a valid variable identifier. Dont push to stack
+// Recieve a state machine and edit it
+fn variable(c: char, mut state_machine: StateMachine) -> StateMachine {
+    if c == '=' {
+        state_machine.state = State::AfterAssignation;
+    } else if char_validations::is_variable_identifier(c) {
+        state_machine.state = State::Variable;
+    } else {
+        state_machine.state = State::Reject;
+    }
+    state_machine
+}
+
+// Transition from q2 to q2 if the char is an opening parenthesis and push the parenthesis to the stack.
+// Transition from q2 to q3 if the char is a valid variable identifier. Dont push to stack
+// Transition from q2 to q5 if the char is a digit. Dont push to stack
+// Receive a state machine and edit it
+fn after_assignation(c: char, mut state_machine: StateMachine) -> StateMachine {
+    if c == '(' {
+        state_machine.stack.push_back(c);
+        state_machine.state = State::AfterAssignation;
+    } else if char_validations::is_variable_identifier(c) {
+        state_machine.state = State::VariableExpression;
+    } else if char_validations::is_digit(c) {
+        state_machine.state = State::DigitExpression;
+    } else {
+        state_machine.state = State::Reject;
+    }
+    state_machine
+}
+
+// Transition from q3 to q3 if the char is a valid variable identifier or digit. Dont push to stack
+// Transition from q3 to q3 if the char is a closing parenthesis and pop the stack. Dont push to stack
+// Transition from q3 to q4 if the char is an operator. Dont push to stack
+// Transition from q3 to q6 if the char is a semicolon. Dont push to stack
+// Receive a state machine and edit it in place
+fn variable_expression(c: char, mut state_machine: StateMachine) -> StateMachine {
+    if char_validations::is_variable_identifier(c) || char_validations::is_digit(c) {
+        state_machine.state = State::VariableExpression;
+    } else if c == ')' {
+        if state_machine.stack.is_empty() {
+            state_machine.state = State::Reject;
+            return state_machine;
         }
+        state_machine.stack.pop_back();
+        state_machine.state = State::VariableExpression;
+    } else if char_validations::is_operator(c) {
+        state_machine.state = State::Operator;
+    } else if c == ';' && state_machine.stack.is_empty() {
+        state_machine.state = State::Final;
+    } else {
+        state_machine.state = State::Reject;
+    }
+    state_machine
+}
+
+// Transition from q4 to q2 if the char is an opening parenthesis and push the parenthesis to the stack.
+// Transition from q4 to q3 if the char is a valid variable identifier. Dont push to stack
+// Transition from q4 to q5 if the char is a digit. Dont push to stack
+// Receive a state machine and edit it in place
+fn operator(c: char, mut state_machine: StateMachine) -> StateMachine {
+    if c == '(' {
+        state_machine.stack.push_back(c);
+        state_machine.state = State::AfterAssignation;
+    } else if char_validations::is_variable_identifier(c) {
+        state_machine.state = State::VariableExpression;
+    } else if char_validations::is_digit(c) {
+        state_machine.state = State::DigitExpression;
+    } else {
+        state_machine.state = State::Reject;
+    }
+    state_machine
+}
+
+// Transition from q5 to q5 if the char is a digit. Dont push to stack
+// Transition from q5 to q5 if the char is a closing parenthesis and pop the stack. Dont push to stack
+// Transition from q5 to q4 if the char is an operator. Dont push to stack
+// Transition from q5 to q6 if the char is a semicolon. Dont push to stack
+// Receive a state machine and edit it in place
+fn digit_expression(c: char, mut state_machine: StateMachine) -> StateMachine {
+    if char_validations::is_digit(c) {
+        state_machine.state = State::DigitExpression;
+    } else if c == ')' {
+        if state_machine.stack.is_empty() {
+            state_machine.state = State::Reject;
+            return state_machine;
+        }
+        state_machine.stack.pop_back();
+        state_machine.state = State::DigitExpression;
+    } else if char_validations::is_operator(c) {
+        state_machine.state = State::Operator;
+    } else if c == ';' && state_machine.stack.is_empty() {
+        state_machine.state = State::Final;
+    } else {
+        state_machine.state = State::Reject;
+    }
+    state_machine
+}
+
+// transition function that receives a string, creates a state machine and iterates over the string to validate it
+fn validate_expression(expression: &str) -> bool {
+    let mut state_machine = StateMachine {
+        state: State::Start,
+        stack: VecDeque::new(),
+    };
+    for c in expression.chars() {
+        if c == ' ' {
+            continue;
+        }
+        match state_machine.state {
+            State::Start => state_machine = start(c, state_machine),
+            State::Variable => state_machine = variable(c, state_machine),
+            State::AfterAssignation => state_machine = after_assignation(c, state_machine),
+            State::VariableExpression => state_machine = variable_expression(c, state_machine),
+            State::Operator => state_machine = operator(c, state_machine),
+            State::DigitExpression => state_machine = digit_expression(c, state_machine),
+            State::Final => return true,
+            State::Reject => return false,
+        }
+    }
+    if state_machine.state == State::Final {
+        true
+    } else {
+        false
     }
 }
 
-impl Eq for State {}
-
-#[derive(Hash)]
-enum Token {
-    Operator(char),
-    Parenthesis(char),
-    Digit(char),
-    Identifier(String),
-    // other tokens
-    Invalid,
-}
-
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Token::Operator(c1), Token::Operator(c2)) => c1 == c2,
-            (Token::Parenthesis(c1), Token::Parenthesis(c2)) => c1 == c2,
-            (Token::Digit(c1), Token::Digit(c2)) => c1 == c2,
-            (Token::Identifier(s1), Token::Identifier(s2)) => s1 == s2,
-            (Token::Invalid, Token::Invalid) => true,
-            _ => false,
-        }
+fn main() {
+    let expressions = [
+        "A2 = A1 + 12 + C5;",
+        "AB = A*B/100-59;",
+        "ABC = (340 % 2) + (12-C);",
+        "AC = 10 + 8 * (5+B);",
+        "VAR = CatA + ( ( CatA + CatB ) * CatC );",
+        "s2 = 10 + 8 * (5+B));",
+        "sdfr4 = 10 + 8 * ((((5+B);",
+    ];
+    for expression in expressions.iter() {
+        println!(
+            "Expression '{}' is valid: {}",
+            expression,
+            validate_expression(expression)
+        );
     }
-}
-
-impl Eq for Token {}
-
-impl StackAutomaton {
-    fn new() -> StackAutomaton {
-        let mut transition_table = HashMap::new();
-    
-        transition_table.insert((State::Initial, Token::Parenthesis('(')), State::StartParenthesis);
-        transition_table.insert((State::StartParenthesis, Token::Identifier(_)), State::AfterIdentifier);
-        transition_table.insert((State::AfterIdentifier, Token::Operator(_)), State::AfterOperator);
-        transition_table.insert((State::AfterOperator, Token::Identifier(_)), State::AfterIdentifier);
-        transition_table.insert((State::AfterIdentifier, Token::Parenthesis(')')), State::Final);
-        transition_table.insert((State::AfterOperator, Token::Digit(_)), State::AfterDigit);
-        transition_table.insert((State::AfterDigit, Token::Parenthesis(')')), State::Final);
-        transition_table.insert((State::Initial, Token::Invalid), State::Invalid);
-        transition_table.insert((State::StartParenthesis, Token::Invalid), State::Invalid);
-        transition_table.insert((State::AfterIdentifier, Token::Invalid), State::Invalid);
-        transition_table.insert((State::AfterOperator, Token::Invalid), State::Invalid);
-        transition_table.insert((State::AfterDigit, Token::Invalid), State::Invalid);
-        
-        StackAutomaton {
-            stack: vec![State::Initial],
-            transition_table,
-        }
-    }
-
-    fn transition(&mut self, token: Token) {
-        let current_state = *self.stack.last().unwrap();
-        match self.transition_table.get(&(current_state, token)) {
-            Some(next_state) => self.stack.push(*next_state),
-            None => self.stack.push(State::Invalid),
-        }
-    }
-
-    fn is_final_state(&self) -> bool {
-        match self.stack.last() {
-            Some(State::Final) => true,
-            _ => false,
-        }
-    }
-}
-
-fn parse(input: &str) -> bool {
-    let mut automaton = StackAutomaton::new();
-    for c in input.chars() {
-        match c {
-            '=' | '+' | '-' | '*' | '/' | '%' => automaton.transition(Token::Operator(c)),
-            '(' | ')' => automaton.transition(Token::Parenthesis(c)),
-            '0'..='9' => automaton.transition(Token::Digit(c)),
-            'A'..='Z' | 'a'..='z' | '_' => {
-                let mut identifier = String::new();
-                identifier.push(c);
-                while let Some(c) = input.chars().nth(identifier.len()) {
-                    if c.is_alphanumeric() || c == '_' {
-                        identifier.push(c);
-                    } else {
-                        break;
-                    }
-                }
-                automaton.transition(Token::Identifier(identifier))
-            }
-            _ => automaton.transition(Token::Invalid),
-        }
-    }
-    automaton.is_final_state()
 }
