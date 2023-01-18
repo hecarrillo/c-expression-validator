@@ -141,6 +141,7 @@ pub fn validate_expression(expression: &str) -> bool {
         if c == ' ' {
             continue;
         }
+
         match state_machine.state {
             State::Start => state_machine = start(c, state_machine),
             State::Variable => state_machine = variable(c, state_machine),
